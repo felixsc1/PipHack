@@ -1,0 +1,5 @@
+# OpenAI API Key for the LLM
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Mock mode for development on Windows (True) or real execution on Kali (False)
+MOCK_MODE=True
