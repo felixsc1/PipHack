@@ -9,8 +9,10 @@ from typing import Dict, List
 
 import streamlit as st
 from dotenv import load_dotenv
+from langchain_core.callbacks import BaseCallbackHandler
 
-from agents.pentest_agent import run_pentest_query
+from agents.pentest_agent import run_pentest_query, pentest_agent
+from tools.shell_tool import set_shell_commands_enabled
 
 # Load environment variables
 load_dotenv()
@@ -31,6 +33,9 @@ if "scan_results" not in st.session_state:
 
 if "current_target" not in st.session_state:
     st.session_state.current_target = ""
+
+if "shell_commands_enabled" not in st.session_state:
+    st.session_state.shell_commands_enabled = False
 
 
 def display_message(message: Dict):
@@ -173,12 +178,22 @@ def main():
         
         st.header("⚙️ Configuration")
 
-        # Mock mode indicator
-        mock_mode = os.getenv("MOCK_MODE", "False").lower() == "true"
-        if mock_mode:
-            st.warning("🧪 **Mock Mode Active** - Using simulated tool outputs")
+        # Shell command safety toggle
+        st.subheader("🛡️ Safety Settings")
+        shell_enabled = st.checkbox("Enable Shell Command Execution", value=st.session_state.shell_commands_enabled,
+                                   help="Must be enabled to allow PipHack to execute shell commands on the system")
+
+        # Update both session state and tool flag
+        if shell_enabled != st.session_state.shell_commands_enabled:
+            st.session_state.shell_commands_enabled = shell_enabled
+            set_shell_commands_enabled(shell_enabled)
+
+        if st.session_state.shell_commands_enabled:
+            st.success("✅ Shell commands enabled - PipHack can now execute system commands")
         else:
-            st.success("🔧 **Real Mode** - Using actual security tools")
+            st.warning("⚠️ Shell commands disabled - Enable to allow command execution")
+
+        st.success("🔧 **Live Mode** - Executing Kali Linux commands")
 
         st.divider()
 
@@ -190,12 +205,15 @@ def main():
         # Available tools
         st.subheader("🛠️ Available Tools")
         tools = [
-            "🔍 Nmap Scan - Port scanning & service detection",
-            "💀 SearchSploit - Exploit database search",
-            "🌐 Web Enumeration - Web app analysis"
+            "💻 Shell Execution - Run any Kali Linux command",
+            "📁 File Operations - Read/write/list files",
+            "🔍 Web Search - Research tools and vulnerabilities",
+            "📋 Context File - Custom wordlists and commands"
         ]
         for tool in tools:
             st.write(f"• {tool}")
+
+        st.caption("*Tools execute real commands on the Kali Linux system*")
 
         st.divider()
 
@@ -212,6 +230,7 @@ def main():
     # Display chat history
     for message in st.session_state.messages:
         display_message(message)
+
 
     # Chat input
     if prompt := st.chat_input("Ask PipHack to scan a target, search for exploits, or analyze web applications..."):
@@ -234,6 +253,7 @@ def main():
                             if word.replace(".", "").replace("/", "").isalnum() and ("." in word or "/" in word):
                                 st.session_state.current_target = word
                                 break
+
 
                     # Run the query through the agent
                     result = run_pentest_query(prompt, st.session_state.current_target)

@@ -4,25 +4,25 @@
   <img src="assets/piphack_logo.png" alt="PipHack Logo" width="256">
 </p>
 
-
-PipHack is an intelligent penetration testing assistant that combines the power of Large Language Models with specialized security tools to help ethical hackers perform comprehensive security assessments.
+PipHack is an intelligent penetration testing assistant that combines the power of Large Language Models with Kali Linux command-line tools to help ethical hackers perform comprehensive security assessments.
 
 This is a learning project that is still in early development.
 
 ## Features
 
-- 🔍 **Network Scanning**: Automated nmap scans for port discovery and service enumeration
-- 💀 **Exploit Research**: SearchSploit integration for finding known vulnerabilities
-- 🌐 **Web Application Analysis**: Playwright-powered web enumeration and vulnerability detection
+- 💻 **Shell-Based Pentesting**: LLM-guided execution of arbitrary Kali Linux commands with user confirmation
+- 📁 **File Operations**: Read, write, and list files to manage notes, wordlists, and results
+- 📋 **Context-Aware Assistance**: Uses a configurable context file for wordlists, commands, and target notes
+- 🔍 **Web Research**: Tavily-powered web search for documentation, CVEs, and exploit information
 - 🤖 **AI-Powered Analysis**: GPT-5 powered agent that understands context and provides recommendations
-- 🧪 **Mock Mode**: Development mode with simulated outputs for testing on Windows
 - 💬 **Interactive Chat**: Streamlit-based chat interface for natural interaction
 
 ## Architecture
 
 - **Frontend**: Streamlit web interface
 - **Core Logic**: LangGraph state management and agent orchestration
-- **Tools**: Custom LangChain tools wrapping security utilities
+- **Tools**: Shell execution, file tools, and Tavily web search
+- **Context**: User-editable `config/context.md` loaded into the system prompt
 - **LLM**: OpenAI GPT-5 for intelligent analysis
 
 ## Installation
@@ -31,7 +31,7 @@ This is a learning project that is still in early development.
 
 - Python 3.8+
 - OpenAI API key
-- (For Kali Linux) nmap, searchsploit, and other pentesting tools
+- Kali Linux with common pentesting tools available on the system PATH
 
 ### Setup
 
@@ -65,28 +65,23 @@ This is a learning project that is still in early development.
 
 5. **Configure environment**:
    ```bash
-   cp .env.example .env
-   # Edit .env file with your OpenAI API key
+   # Create a .env file (optionally based on env_example.txt)
+   # and add your API keys
    ```
 
 ## Configuration
 
 ### Environment Variables
 
-Create a `.env` file with the following variables:
+Create a `.env` file with at least the following variables:
 
 ```env
 # OpenAI API Key for the LLM
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Mock mode for development on Windows (True) or real execution on Kali (False)
-MOCK_MODE=True
+# Tavily API Key for web search (optional but recommended)
+TAVILY_API_KEY=your_tavily_api_key_here
 ```
-
-### Mode Settings
-
-- **Mock Mode (`MOCK_MODE=True`)**: Uses simulated tool outputs. Perfect for development and testing on Windows.
-- **Real Mode (`MOCK_MODE=False`)**: Uses actual security tools. Required for Kali Linux deployment.
 
 ## Usage
 
@@ -100,24 +95,17 @@ The application will open in your default web browser at `http://localhost:8501`
 
 ### Basic Workflow
 
-1. **Start a conversation**: Ask PipHack to scan a target
+1. **Start a conversation**: Ask PipHack to perform recon or analysis on a target
 
    ```
    "Scan 192.168.1.100 for open ports"
    ```
 
-2. **Analyze results**: The AI will automatically run nmap and present findings
+2. **Review proposed commands**: PipHack will suggest one or more Kali commands (e.g. `nmap`, `gobuster`, `searchsploit`) and display them with a confirmation step in the UI.
 
-3. **Check for exploits**: For discovered services, PipHack will search for known vulnerabilities
+3. **Confirm execution**: You decide which commands to run; on confirmation, PipHack executes them on the Kali host and ingests the results.
 
-   ```
-   "Check for exploits for the services found"
-   ```
-
-4. **Web analysis**: If web services are detected, analyze the web application
-   ```
-   "Analyze the web application on port 80"
-   ```
+4. **Iterate**: Ask follow-up questions, refine scans, and pivot based on findings.
 
 ### Example Commands
 
@@ -127,43 +115,12 @@ The application will open in your default web browser at `http://localhost:8501`
 - "Analyze the website at http://192.168.1.100"
 - "Search for vulnerabilities in SSH"
 
-## Tool Details
+## Tooling Overview
 
-### Nmap Tool
-
-- Performs comprehensive port scanning with service version detection
-- Returns structured JSON output with all discovered services
-- Automatically identifies potential web services for further analysis
-
-### SearchSploit Tool
-
-- Searches local Exploit-DB for known vulnerabilities
-- Provides exploit titles, descriptions, and usage instructions
-- Helps prioritize vulnerabilities by severity
-
-### Web Enumeration Tool
-
-- Uses browser automation to analyze web applications
-- Detects forms, login pages, file uploads, and potential vulnerabilities
-- Identifies common attack vectors like SQL injection points
-
-## Development vs Production
-
-### Windows Development (Mock Mode)
-
-- Set `MOCK_MODE=True` in your `.env` file
-- All tools return simulated outputs
-- Perfect for UI testing and logic verification
-- No security tools required
-
-### Kali Linux Production (Real Mode)
-
-- Set `MOCK_MODE=False` in your `.env` file
-- Requires actual security tools:
-  - `nmap` for network scanning
-  - `searchsploit` for exploit database
-  - `playwright` for web analysis
-- Full penetration testing capabilities
+- **Shell Execution**: Run arbitrary Kali Linux commands proposed by the agent, with explicit user confirmation.
+- **File Tools**: Read existing files (e.g. wordlists, config, output), write notes, and list directories.
+- **Tavily Web Search**: Look up documentation, CVEs, exploit details, and tool usage.
+- **Context File**: `config/context.md` holds wordlists, common commands, tool locations, and target-specific notes that the agent can consult.
 
 ## Security & Ethics
 
@@ -173,11 +130,10 @@ The application will open in your default web browser at `http://localhost:8501`
 - Respect all applicable laws and regulations
 - Use the tool responsibly for defensive security purposes
 
-
 ## Future Enhancements
 
 - Automated vulnerability exploitation (with user confirmation)
 - Advanced web vulnerability scanning (XSS, CSRF, etc.)
 - Report generation and export
-- Integration with additional security tools
+- Integration with additional security tools and workflows
 - Multi-target assessment workflows
