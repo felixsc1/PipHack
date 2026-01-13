@@ -12,7 +12,13 @@ from dotenv import load_dotenv
 from langchain_core.callbacks import BaseCallbackHandler
 
 from agents.pentest_agent import run_pentest_query, pentest_agent
-from tools.shell_tool import set_shell_commands_enabled
+from tools.shell_tool import (
+    set_shell_commands_enabled,
+    set_confirmation_mode,
+    get_pending_commands,
+    clear_pending_commands,
+    execute_command_directly,
+)
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +42,12 @@ if "current_target" not in st.session_state:
 
 if "shell_commands_enabled" not in st.session_state:
     st.session_state.shell_commands_enabled = False
+
+if "confirmation_mode" not in st.session_state:
+    st.session_state.confirmation_mode = True  # Enabled by default for safety
+
+if "command_results" not in st.session_state:
+    st.session_state.command_results = []  # Store results from confirmed commands
 
 
 def display_message(message: Dict):
@@ -111,6 +123,102 @@ def display_nmap_results(nmap_data: Dict):
             st.write("Unexpected host data format")
     else:
         st.write("No host information available")
+
+
+def display_pending_commands():
+    """Display pending commands with confirm/cancel buttons."""
+    pending = get_pending_commands()
+    
+    if not pending:
+        return False
+    
+    st.markdown("---")
+    st.subheader("🔒 Commands Awaiting Confirmation")
+    
+    for i, cmd_info in enumerate(pending):
+        command = cmd_info["command"]
+        timeout = cmd_info.get("timeout", 300)
+        
+        # Display the command in a styled box
+        st.markdown(f"""
+        <div style="background-color: #1e1e1e; border: 1px solid #ffa500; border-radius: 8px; padding: 16px; margin: 10px 0;">
+            <p style="color: #ffa500; font-weight: bold; margin-bottom: 8px;">📋 Command #{i+1}</p>
+            <code style="background-color: #2d2d2d; color: #00ff00; padding: 8px; display: block; border-radius: 4px; font-family: monospace;">{command}</code>
+            <p style="color: #888; font-size: 12px; margin-top: 8px;">Timeout: {timeout}s</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create confirm/cancel buttons
+        col1, col2, col3 = st.columns([1, 1, 2])
+        
+        with col1:
+            if st.button(f"✅ Confirm", key=f"confirm_{i}", type="primary"):
+                # Execute the command
+                with st.spinner(f"Executing command..."):
+                    output = execute_command_directly(command, timeout)
+                
+                # Store the result
+                result_message = f"**Executed Command:**\n```bash\n{command}\n```\n\n**Output:**\n```\n{output}\n```"
+                st.session_state.command_results.append({
+                    "command": command,
+                    "output": output
+                })
+                
+                # Add to chat history
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": result_message
+                })
+                
+                # Clear this pending command and rerun
+                clear_pending_commands()
+                st.rerun()
+        
+        with col2:
+            if st.button(f"❌ Cancel", key=f"cancel_{i}"):
+                # Add cancellation message to chat
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": f"⚠️ Command cancelled by user:\n```bash\n{command}\n```"
+                })
+                
+                clear_pending_commands()
+                st.rerun()
+    
+    # Add a "Confirm All" and "Cancel All" if multiple commands
+    if len(pending) > 1:
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 2])
+        
+        with col1:
+            if st.button("✅ Confirm All", type="primary"):
+                results = []
+                for cmd_info in pending:
+                    command = cmd_info["command"]
+                    timeout = cmd_info.get("timeout", 300)
+                    with st.spinner(f"Executing: {command[:50]}..."):
+                        output = execute_command_directly(command, timeout)
+                    results.append(f"**Command:**\n```bash\n{command}\n```\n\n**Output:**\n```\n{output}\n```")
+                
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": "\n\n---\n\n".join(results)
+                })
+                clear_pending_commands()
+                st.rerun()
+        
+        with col2:
+            if st.button("❌ Cancel All"):
+                cancelled_cmds = "\n".join([f"- `{c['command']}`" for c in pending])
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": f"⚠️ All commands cancelled by user:\n{cancelled_cmds}"
+                })
+                clear_pending_commands()
+                st.rerun()
+    
+    st.markdown("---")
+    return True
 
 
 def display_web_enum_results(web_data: Dict):
@@ -193,6 +301,22 @@ def main():
         else:
             st.warning("⚠️ Shell commands disabled - Enable to allow command execution")
 
+        # Confirmation mode toggle
+        confirmation_enabled = st.checkbox(
+            "Require Command Confirmation",
+            value=st.session_state.confirmation_mode,
+            help="When enabled, PipHack will ask for your approval before executing shell commands"
+        )
+
+        if confirmation_enabled != st.session_state.confirmation_mode:
+            st.session_state.confirmation_mode = confirmation_enabled
+            set_confirmation_mode(confirmation_enabled)
+
+        if st.session_state.confirmation_mode:
+            st.info("🔐 Confirmation mode - Commands require approval before execution")
+        else:
+            st.warning("⚡ Auto-execute mode - Commands run immediately without confirmation")
+
         st.success("🔧 **Live Mode** - Executing Kali Linux commands")
 
         st.divider()
@@ -222,7 +346,13 @@ def main():
             st.session_state.messages = []
             st.session_state.scan_results = {}
             st.session_state.current_target = ""
+            st.session_state.command_results = []
+            clear_pending_commands()
             st.rerun()
+
+    # Initialize confirmation mode on startup
+    set_confirmation_mode(st.session_state.confirmation_mode)
+    set_shell_commands_enabled(st.session_state.shell_commands_enabled)
 
     # Main chat interface
     st.header("💬 Chat with PipHack")
@@ -231,9 +361,14 @@ def main():
     for message in st.session_state.messages:
         display_message(message)
 
+    # Display any pending commands with confirmation buttons
+    has_pending = display_pending_commands()
 
-    # Chat input
-    if prompt := st.chat_input("Ask PipHack to scan a target, search for exploits, or analyze web applications..."):
+    # Chat input (disabled if there are pending commands)
+    if has_pending:
+        st.info("⏳ Please confirm or cancel the pending commands above before continuing.")
+        st.chat_input("Waiting for command confirmation...", disabled=True)
+    elif prompt := st.chat_input("Ask PipHack to scan a target, search for exploits, or analyze web applications..."):
         # Add user message to history
         user_message = {"role": "user", "content": prompt}
         st.session_state.messages.append(user_message)
@@ -274,6 +409,10 @@ def main():
 
                     # Display AI response
                     display_message(ai_message)
+
+                    # Check if there are pending commands - rerun to show confirmation UI
+                    if get_pending_commands():
+                        st.rerun()
 
                 except Exception as e:
                     st.error(f"Error: {str(e)}")

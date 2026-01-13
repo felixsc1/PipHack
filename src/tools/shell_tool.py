@@ -6,7 +6,7 @@ any command on the Kali Linux system with timeout and output truncation.
 """
 
 import subprocess
-from typing import Optional
+from typing import Optional, List, Dict
 
 from langchain_core.tools import tool
 
@@ -14,11 +14,80 @@ from langchain_core.tools import tool
 # This will be set by the main application
 shell_commands_enabled = False
 
+# Global flag for confirmation mode
+# When True, commands are queued instead of executed immediately
+confirmation_mode_enabled = False
+
+# Queue of pending commands awaiting confirmation
+pending_commands: List[Dict] = []
+
 
 def set_shell_commands_enabled(enabled: bool):
     """Set whether shell commands are enabled."""
     global shell_commands_enabled
     shell_commands_enabled = enabled
+
+
+def set_confirmation_mode(enabled: bool):
+    """Set whether confirmation mode is enabled."""
+    global confirmation_mode_enabled
+    confirmation_mode_enabled = enabled
+
+
+def get_pending_commands() -> List[Dict]:
+    """Get the list of pending commands awaiting confirmation."""
+    return pending_commands.copy()
+
+
+def clear_pending_commands():
+    """Clear all pending commands."""
+    global pending_commands
+    pending_commands = []
+
+
+def add_pending_command(command: str, timeout: int = 300):
+    """Add a command to the pending queue."""
+    pending_commands.append({"command": command, "timeout": timeout})
+
+
+def execute_command_directly(command: str, timeout: int = 300) -> str:
+    """
+    Execute a shell command directly without going through the tool wrapper.
+    Used for executing confirmed commands.
+    """
+    try:
+        result = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=timeout
+        )
+
+        output = ""
+        if result.stdout:
+            output += result.stdout
+        if result.stderr:
+            if output:
+                output += "\n--- STDERR ---\n"
+            output += result.stderr
+
+        if len(output) > MAX_OUTPUT_CHARACTERS:
+            truncated_output = output[:MAX_OUTPUT_CHARACTERS]
+            truncated_output += f"\n\n[Output truncated - showing first {MAX_OUTPUT_CHARACTERS} characters]"
+            total_chars = len(output)
+            truncated_output += f"\nTotal output length: {total_chars} characters"
+            output = truncated_output
+
+        if result.returncode != 0:
+            output = f"Command exited with code {result.returncode}\n\n{output}"
+
+        if not output.strip():
+            output = "(no output captured from the command)"
+
+        return output
+
+    except subprocess.TimeoutExpired:
+        return f"Command timed out after {timeout} seconds."
+
+    except Exception as e:
+        return f"Error executing command: {str(e)}"
 
 
 MAX_OUTPUT_CHARACTERS = 30000
@@ -55,57 +124,23 @@ def execute_shell_command(command: str, timeout: int = 300) -> str:
             "Please enable it in the sidebar configuration before PipHack can execute commands.\n\n"
             f"Command that would have been executed: `{command}`"
         )
-    try:
-        # Execute the command
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=timeout
-        )
 
-        # Combine stdout and stderr
-        output = ""
-        if result.stdout:
-            output += result.stdout
-        if result.stderr:
-            if output:
-                output += "\n--- STDERR ---\n"
-            output += result.stderr
-
-        # Truncate if too long
-        if len(output) > MAX_OUTPUT_CHARACTERS:
-            truncated_output = output[:MAX_OUTPUT_CHARACTERS]
-            truncated_output += f"\n\n[Output truncated - showing first {MAX_OUTPUT_CHARACTERS} characters]"
-
-            # Count total characters for info
-            total_chars = len(output)
-            truncated_output += f"\nTotal output length: {total_chars} characters"
-            output = truncated_output
-
-        # Add exit code info if non-zero
-        if result.returncode != 0:
-            output = f"Command exited with code {result.returncode}\n\n{output}"
-
-        # Ensure there is at least some output text
-        if not output.strip():
-            output = "(no output captured from the command)"
-
-        # Always return the exact command that was executed along with its output
+    # Confirmation mode: queue command instead of executing
+    if confirmation_mode_enabled:
+        add_pending_command(command, timeout)
         return (
-            "Shell command executed:\n"
-            f"`{command}`\n\n"
-            "Command output:\n"
-            f"{output}"
+            "🔒 **Command Pending Confirmation**\n\n"
+            f"The following command has been queued for your approval:\n\n"
+            f"```bash\n{command}\n```\n\n"
+            "Please use the confirmation buttons in the UI to approve or cancel this command."
         )
 
-    except subprocess.TimeoutExpired:
-        return (
-            "Shell command executed:\n"
-            f"`{command}`\n\n"
-            f"Command timed out after {timeout} seconds."
-        )
-
-    except Exception as e:
-        return (
-            "Shell command executed:\n"
-            f"`{command}`\n\n"
-            f"Error executing command: {str(e)}"
-        )
+    # Direct execution mode
+    output = execute_command_directly(command, timeout)
+    
+    return (
+        "Shell command executed:\n"
+        f"`{command}`\n\n"
+        "Command output:\n"
+        f"{output}"
+    )
