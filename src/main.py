@@ -390,8 +390,12 @@ def main():
                                 break
 
 
-                    # Run the query through the agent
-                    result = run_pentest_query(prompt, st.session_state.current_target)
+                    # Run the query through the agent with full chat history
+                    result = run_pentest_query(
+                        prompt, 
+                        st.session_state.current_target,
+                        message_history=st.session_state.messages
+                    )
 
                     # Extract the last message from the result
                     if "messages" in result and result["messages"]:
